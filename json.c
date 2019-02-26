@@ -48,6 +48,9 @@
 #define raise_error                 error
 #define member(x, y)                member_array(y, x)
 #define to_string(x)                ("" + (x))
+#ifndef __ARRAY_RESERVED_WORD__
+#define array *
+#endif // !__ARRAY_RESERVED_WORD__
 #else // MUDOS
 #include <lpctypes.h>
 #define replace_string(x, y, z)     implode(explode((x), (y)), (z))
@@ -389,6 +392,7 @@ private mixed json_decode_parse_number(mixed array parse) {
             json_decode_parse_next_char(parse);
         }
         // Fallthrough
+/* Tim commented this out, fix logic instead of commenting out.
     case '0'            :
         json_decode_parse_next_char(parse);
         ch = parse[JSON_DECODE_PARSE_TEXT][parse[JSON_DECODE_PARSE_POS]];
@@ -398,6 +402,7 @@ private mixed json_decode_parse_number(mixed array parse) {
             dot = parse[JSON_DECODE_PARSE_POS];
         }
         break;
+*/
     }
     json_decode_parse_next_char(parse);
     while(to == -1) {
