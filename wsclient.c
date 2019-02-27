@@ -629,3 +629,6 @@ void remove(){
   destruct(this_object());
   return;
  }
+object get_owner(){
+  return callback_object;
+ }
