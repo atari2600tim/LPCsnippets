@@ -152,8 +152,8 @@ mixed base64_decode(string str){
 	}
 
 	// Figure out result size if there was padding.
-	if(instr[in_sz-2]=='='){ j = in_sz/4*3-3; }
-	else if(instr[in_sz-1]=='='){ j = in_sz/4*3-2; }
+	if(instr[in_sz-2]=='='){ j = in_sz/4*3-2; }
+	else if(instr[in_sz-1]=='='){ j = in_sz/4*3-1; }
 	else { j = in_sz/4*3; }
 
 	// Decide if we should return a string.
