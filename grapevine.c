@@ -1,8 +1,6 @@
 /*
 Client for Grapevine intermud system
-After I tested out my websocket object, I added basic Grapevine code into it,
-and then later I separated this out again on Feb 26 2019.
-I haven't done anything to make it easy to integrate into your game, it barely works in my stock TMI-2.
+After I tested out my websocket object, I added basic Grapevine code into it, and then later I separated this out again on Feb 26 2019.
 
 10.240.0.4 4001 is my own computer running a copy of the grapevine server on an unencrypted connection.
 To connect to the official server, you will want to set up stunnel on your local system.
@@ -18,27 +16,22 @@ Also set up your firewall to block outsiders from reaching that port.
 
 Then change the setup_websocket line below to "127.0.0.1 2000" or whatever port number you picked.
 
-Actually instead of rambling here, just search for CHANGEME and those are the first
-things you almost certainly need to change for your game.
-If you're not using a stock TMI-2 mudlib on FluffOS then there's probably more than that.
+Actually, just search for CHANGEME and those are the first things you almost certainly need to change for your game.
+If you're not using a stock TMI-2 mudlib then there's probably more than that.
 
 Also you'll want a command to interact with this.  Mine consists of this single line:
 int cmd_grapevine(string str){ return "/adm/daemons/network/grapevine.c"->command(str); }
-
 Also you should have a simul_efun for generate_uuid() like the one at https://github.com/atari2600tim/timmud/blob/master/uuid.c
 And here is something for parsing json: https://github.com/atari2600tim/timmud/blob/master/json.c
 -Tim
 
 NOTES/TODO/etc:
 If it disconnects, then reload this object.
-Currently it saves no settings or chat history, but does log to some files in /log/adm/ for debugging.
+Currently it saves no settings or history.
 It does not try to reconnect, will have to reset certain variables before doing that.
-It is completely self-contained, does not send channel messages to channel daemon,
-does not allow individuals to tune in/out channels or announcements.
-Same in other direction... the login process does not tell this that you've logged in,
-this just checks every time it has a heartbeat and then announces if it sees a different list than last time.
+It is completely self-contained, does not send channel messages to channel daemon, does not allow individuals to tune in/out channels or announcements.
+Same in other direction... login does not tell this that you've logged in, this just glances around every time it has a heartbeat and then announces if it sees someone new.
 I haven't implemented tells and stuff.
-There is zero security so far, any newbie wiz can manually call all the functions in here, chatting in your name and worse.
 */
 
 // "DevGame" / "Development Game" is in the list automatically if you install a local copy of Grapevine server, they start with 62a and 3ab.
@@ -60,7 +53,7 @@ mapping ref_channel_subscribe; // list of subscribe requests that we haven't got
 mapping ref_channel_unsubscribe; // list of subscribe requests that we haven't gotten a response from
 mapping ref_channel_send; // list of outgoing messages that the server should acknowledge
 mapping restart_packet; // payload from last restart packet we got, so that when connection drops we can look at this and know how long to wait before retry
-mapping ref_game_status;
+mapping ref_game_status; // unused? forgot what purpose was
 string *declared_players; // players we told the network about
 
 void subscribe_channel(string str);
@@ -75,11 +68,11 @@ int is_grapevine_user(object ob){
 void setup(){
   string err;
   ws = new("/obj/net/wsclient.c"); // CHANGEME
-  err = ws->setup_websocket("10.240.0.4 4001", "grapevine.haus", "/socket", "got_disconnected", "got_text", "got_connected"); // CHANGEME
+err = ws->setup_websocket("127.0.0.1 2000", "grapevine.haus", "/socket", "got_disconnected", "got_text", "got_connected");
 }
 
-
-void create(){
+void restart(){
+  if(ws) return; // only run if it is not already connected
   authenticated = 0;
   game_list = ([ ]);
   players_list = ([]);
@@ -90,6 +83,11 @@ void create(){
   ref_channel_send = ([]);
   declared_players = ({});
   call_out("setup",3);
+}
+
+
+void create(){
+  restart();
 }
 
 // 'set grapevine' to participate and be visible on the network, you see people log in/out, channels, muds online/offline, but not told about internals
@@ -152,18 +150,23 @@ void got_connected(){
 }
 
 void got_disconnected(string str){
+    int i;
     debHigh("We were disconnected");
-    deb("got disconnected");
+    deb("got disconnected, str="+str);
     authenticated = 0;
     if(restart_packet){
         deb("  restart packet from earlier suggests downtime of: "+restart_packet["downtime"]);
+        i = restart_packet["downtime"];
         // This is where I'd set up a reconnect thing once I implement that.
-        return;
     }
     else{
-        deb("  no restart packet was sent");
-        return;
+        deb("  no restart packet was sent, will wait 120 seconds");
+        i = 120;
     }
+    if(ws) call_other(ws, "remove");
+    ws = 0;
+// not sure if restart will work but I think I solved the double disconnect thing
+    call_out("restart", i);
     // possibly do something different if they sent us a 'close' frame with a message in it... if they told us bad authentication then shouldn't hammer it until they ban our IP or something
 }
 
@@ -195,7 +198,7 @@ void got_text(string str){
         send_json( ([ "event":"players/status", "ref":generate_uuid() ]) );
 // move this to a configuration setting
 subscribe_channel("gossip");
-subscribe_channel("announcements");
+//subscribe_channel("announcements");
 subscribe_channel("testing");
         // Should I send a sign-in packet upon login regarding each existing player?
         // For the server, "each beat fully replaces the list, ensuring it keeps in sync".
@@ -242,7 +245,7 @@ subscribe_channel("testing");
     case "restart":
       deb("   about to handle restart");
       deb("     given downtime is:"+map["payload"]["downtime"] );
-      debHigh("Notification that server will be down for "+map["payload"]["downtime"]+" seconds.\n");
+      debHigh("Notification that server will be down for "+map["payload"]["downtime"]+" seconds.");
       restart_packet = map["payload"];
       return;
     // for actually integrating channels I should probably add an external object to interact with
@@ -251,7 +254,7 @@ subscribe_channel("testing");
       deb("   channels/subscribe came in");
       a = ref_channel_subscribe[ref]; // a = channel name
       if(!a){
-          debHigh("They acknowledge a channel subscribe that I don't remember requesting, uuid: "+ref+"\n");
+          debHigh("They acknowledge a channel subscribe that I don't remember requesting, uuid: "+ref);
         deb("    I never asked to subscribe to a channel using that ref though");
         return;
       }
@@ -308,7 +311,9 @@ subscribe_channel("testing");
       a = pay["game"];
       b = pay["name"];
       deb("  players/signin regarding game ["+a+"] and player ["+b+"] ");
+/*
         debHigh(sprintf("%s@%s logged in",b,a));
+*/
       if(!players_list[a]){
          players_list[a] = ({ });
       }
@@ -319,7 +324,9 @@ subscribe_channel("testing");
       a = pay["game"];
       b = pay["name"];
       deb("  players/signout regarding game ["+a+"] and player ["+b+"] ");
+/*
       debHigh(sprintf("%s@%s logged out",b,a));
+*/
       if(!players_list[a]){
          players_list[a] = ({ });
       }
@@ -530,12 +537,6 @@ EndText);
       send_chan_msg("gossip",name);
       return 1;
     }
-    else if(sscanf(str,"testing %s",name)==1){
-      if(member_array("testing",channel_list)==-1) return notify_fail("Not subscribed to testing channel\n");
-      write("Sending message out to network on testing channel: "+name+"\n");
-      send_chan_msg("testing",name);
-      return 1;
-    }
     else if(str=="channels"){
         output = "Channels we are subscribed to on grapevine network:\n";
         foreach(name in (channel_list)){
@@ -571,22 +572,22 @@ EndText);
                 write("trying generic players/status msg");
                 return 1;
     }
-    else if(str=="test1"){
+    else if(str=="games1"){
                 send_json( ([ "event":"games/status", "ref":generate_uuid() ]) );
                 write("trying generic games/status msg");
                 return 1;
     }
-    else if(str=="test2"){
+    else if(str=="games2"){
                 send_json( ([ "event":"games/status", "ref":generate_uuid(), "payload":([ "game":"Grapevine" ]) ]) );
                 write("trying games/status msg for the ones listed in that seeds database thing");
                 return 1;
     }
-    else if(str=="test3"){
+    else if(str=="games3"){
                 send_json( ([ "event":"games/status", "ref":generate_uuid(), "payload":([ "game":"DevGame" ]) ]) );
                 write("trying games/status msg for the ones listed in that seeds database thing");
                 return 1;
     }
-    else if(str=="test4"){
+    else if(str=="games4"){
         return notify_fail("this disconnects\n");
                 send_json( ([ "event":"games/status", "ref":generate_uuid(), "payload":([ "game":"Raisin" ]) ]) );
                 write("trying games/status msg for the ones listed in that seeds database thing");
