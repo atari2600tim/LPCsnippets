@@ -244,6 +244,7 @@ void write_callback(int s) {
 void close_callback(int s) {
   debug("close_callback["+s+"] called, disconnected");
   if(origin() != "internal") { debug("halt close_callback, origin should be internal but was "+origin()); return; }
+connected = 0;
   if(callback_object) call_other(callback_object, close_cb,"lost connection to server");
  }
 void send_handshake() {
@@ -609,7 +610,9 @@ void drop_connection(string str){
    send_frame(allocate_buffer(0),OPCODE_CLOSE);
    socket_close(socket);
    connected = 0; ws_server=0;
-   if(callback_object) call_other(callback_object,close_cb,(str?str:"unknown reason"));
+   if(callback_object) call_other(callback_object,close_cb,(str?str:"called for unknown reason"));
+   callback_object = 0;
+   debug("...end of drop_connection");
  }
 void set_datatype(int i){
   usetype = i;
